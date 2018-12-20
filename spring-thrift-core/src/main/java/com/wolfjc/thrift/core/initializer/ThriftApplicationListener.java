@@ -1,5 +1,6 @@
-package com.wolfjc.thrift.core;
+package com.wolfjc.thrift.core.initializer;
 
+import com.wolfjc.thrift.core.ThriftBootstrap;
 import org.springframework.context.ApplicationEvent;
 import org.springframework.context.ApplicationListener;
 import org.springframework.context.event.ContextClosedEvent;
@@ -11,7 +12,7 @@ import org.springframework.context.event.ContextRefreshedEvent;
 public class ThriftApplicationListener implements ApplicationListener<ApplicationEvent> {
 
     /**
-     *  Thrift服务启动类
+     * Thrift服务启动类
      */
     private ThriftBootstrap thriftBootstrap;
 
@@ -24,7 +25,7 @@ public class ThriftApplicationListener implements ApplicationListener<Applicatio
         if (applicationEvent instanceof ContextRefreshedEvent) {
             thriftBootstrap.start();
         } else if (applicationEvent instanceof ContextClosedEvent) {
-          thriftBootstrap.stop();
+            thriftBootstrap.stop();
         }
     }
 }

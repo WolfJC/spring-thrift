@@ -1,4 +1,4 @@
-package com.wolfjc.thrift.core;
+package com.wolfjc.thrift.core.annotation;
 
 
 import org.springframework.stereotype.Component;

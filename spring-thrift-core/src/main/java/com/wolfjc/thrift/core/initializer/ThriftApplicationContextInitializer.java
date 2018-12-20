@@ -1,4 +1,4 @@
-package com.wolfjc.thrift.core;
+package com.wolfjc.thrift.core.initializer;
 
 import org.springframework.context.ApplicationContextInitializer;
 import org.springframework.context.ConfigurableApplicationContext;
