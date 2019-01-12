@@ -1,8 +1,11 @@
 package com.wolfjc.thrift.core;
 
 import com.wolfjc.thrift.core.annotation.ThriftReference;
+import com.wolfjc.thrift.core.proxy.ProxyFactory;
+import com.wolfjc.thrift.core.proxy.jdk.JdkProxyFactory;
 import org.springframework.beans.BeansException;
 import org.springframework.beans.PropertyValues;
+import org.springframework.beans.factory.BeanClassLoaderAware;
 import org.springframework.beans.factory.BeanCreationException;
 import org.springframework.beans.factory.BeanFactory;
 import org.springframework.beans.factory.BeanFactoryAware;
@@ -13,6 +16,8 @@ import org.springframework.beans.factory.support.MergedBeanDefinitionPostProcess
 import org.springframework.beans.factory.support.RootBeanDefinition;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.ApplicationContextAware;
+import org.springframework.core.Ordered;
+import org.springframework.core.PriorityOrdered;
 import org.springframework.lang.Nullable;
 import org.springframework.util.ReflectionUtils;
 import org.springframework.util.StringUtils;
@@ -29,7 +34,9 @@ import java.util.concurrent.ConcurrentHashMap;
  * 参考Spring中的{@code CommonAnnotationBeanPostProcessor}、incubator-dubbo的{@code AnnotationInjectedBeanPostProcessor}
  */
 public class ThriftReferenceBeanPostProcessor extends InstantiationAwareBeanPostProcessorAdapter implements ApplicationContextAware,
-        MergedBeanDefinitionPostProcessor, BeanFactoryAware, DisposableBean {
+        MergedBeanDefinitionPostProcessor, BeanFactoryAware, DisposableBean, BeanClassLoaderAware, PriorityOrdered {
+
+    public final static String className = "thriftReferenceBeanPostProcessor";
 
     private ApplicationContext applicationContext;
 
@@ -49,10 +56,13 @@ public class ThriftReferenceBeanPostProcessor extends InstantiationAwareBeanPost
 //    private final ConcurrentHashMap<String,ThriftInjectElement> thriftInjectElementCache = new ConcurrentHashMap<>(SIZE);
 
 
-    private final ConcurrentHashMap<String,Object> thriftInjectObjectsCache = new ConcurrentHashMap<>(SIZE);
+    private final ConcurrentHashMap<String, Object> thriftInjectObjectsCache = new ConcurrentHashMap<>(SIZE);
 
 
     private BeanFactory beanFactory;
+
+
+    private ClassLoader classLoader;
 
 
     @Override
@@ -70,8 +80,8 @@ public class ThriftReferenceBeanPostProcessor extends InstantiationAwareBeanPost
     @Override
     public void destroy() throws Exception {
 
-        for (Object object : thriftInjectObjectsCache.values()){
-            if (object instanceof DisposableBean){
+        for (Object object : thriftInjectObjectsCache.values()) {
+            if (object instanceof DisposableBean) {
                 ((DisposableBean) object).destroy();
             }
         }
@@ -129,7 +139,7 @@ public class ThriftReferenceBeanPostProcessor extends InstantiationAwareBeanPost
 
     /**
      * 构建InjectionMetadata对象
-     *
+     * <p>
      * dubbo自定义了类{@code AnnotatedInjectionMetadata}和{@code AnnotatedMethodElement},里面包含了注解信息，通过注解信息可以生成dubbo自定义的
      * beanName。
      *
@@ -141,16 +151,16 @@ public class ThriftReferenceBeanPostProcessor extends InstantiationAwareBeanPost
         List<InjectionMetadata.InjectedElement> elements = new ArrayList<>();
 
         //通过反射遍历对象中的成员变量
-        ReflectionUtils.doWithFields(clazz,field->{
-            if (field.isAnnotationPresent(ThriftReference.class)){
-                if (Modifier.isStatic(field.getModifiers())){
+        ReflectionUtils.doWithFields(clazz, field -> {
+            if (field.isAnnotationPresent(ThriftReference.class)) {
+                if (Modifier.isStatic(field.getModifiers())) {
                     throw new IllegalStateException("@ThriftReference annotation is not supported on static fields");
                 }
-                ThriftInjectElement<ThriftReference> injectElement = new ThriftInjectElement<>(field,field.getAnnotation(ThriftReference.class));
+                ThriftInjectElement injectElement = new ThriftInjectElement(field, field.getAnnotation(ThriftReference.class));
                 elements.add(injectElement);
             }
         });
-        return new InjectionMetadata(clazz,elements);
+        return new InjectionMetadata(clazz, elements);
     }
 
     @Override
@@ -160,15 +170,15 @@ public class ThriftReferenceBeanPostProcessor extends InstantiationAwareBeanPost
     }
 
 
-    private Object getInjectObject(ThriftReference annotation, Object bean, String beanName, Class injectType, InjectionMetadata.InjectedElement injectedElement){
+    private Object getInjectObject(ThriftReference annotation, Class injectType) {
 
-        String cacheKey = buildInjectObjectCacheKey(annotation,injectType);
+        String cacheKey = buildInjectObjectCacheKey(annotation, injectType);
 
-        Object injectObject =  thriftInjectObjectsCache.get(cacheKey);
+        Object injectObject = thriftInjectObjectsCache.get(cacheKey);
 
-        if (injectObject == null){
-            injectObject = doGetInjectObject();
-            thriftInjectObjectsCache.putIfAbsent(cacheKey,injectObject);
+        if (injectObject == null) {
+            injectObject = doGetInjectObject(injectType, annotation);
+            thriftInjectObjectsCache.putIfAbsent(cacheKey, injectObject);
         }
 
         return injectObject;
@@ -181,27 +191,35 @@ public class ThriftReferenceBeanPostProcessor extends InstantiationAwareBeanPost
      * @param annotation
      * @return
      */
-    private String buildInjectObjectCacheKey(ThriftReference annotation,Class injectType){
-        return StringUtils.hasLength(annotation.name()) ? annotation.name() :injectType.getName();
+    private String buildInjectObjectCacheKey(ThriftReference annotation, Class injectType) {
+        return StringUtils.hasLength(annotation.name()) ? annotation.name() : injectType.getName();
     }
 
 
-    private Object doGetInjectObject(){
-
-        return null;
+    private Object doGetInjectObject(Class injectType, ThriftReference annotation) {
+        //先检查Spring容器中是否已经注入了bean，若没有才远程调用
+        String referenceBeanName = annotation.name();
+        Object bean = beanFactory.getBean(referenceBeanName);
+        if (bean != null) {
+            return bean;
+        }
+        ProxyFactory proxyFactory = new JdkProxyFactory();
+        Object proxy = proxyFactory.createProxy(injectType);
+        return proxy;
     }
 
 
-    public class ThriftInjectElement<T extends Annotation> extends InjectionMetadata.InjectedElement {
+    public class ThriftInjectElement extends InjectionMetadata.InjectedElement {
 
         private Field field;
 
-        private T annotation;
+        private ThriftReference annotation;
+
 
 //        private volatile Object bean;
 
-        protected ThriftInjectElement(Field field, T annotation){
-            super(field,null);
+        protected ThriftInjectElement(Field field, ThriftReference annotation) {
+            super(field, null);
             this.field = field;
             this.annotation = annotation;
         }
@@ -212,16 +230,26 @@ public class ThriftReferenceBeanPostProcessor extends InstantiationAwareBeanPost
             Class<?> injectFiledType = field.getType();
 
             //todo::自定义注入bean的实例，后期RPC代理实例注入从这里开始
-//            Object injectObject = getInjectObject(annotation,bean,requestingBeanName,injectFiledType,this);
+            Object injectObject = getInjectObject(annotation, injectFiledType);
 
-            String injectBeanName = field.getName();
-
+//            String injectBeanName = field.getName();
             //使用BeanFactory获取bean实例
-            Object injectObject = beanFactory.getBean(injectBeanName);
+//            Object injectObject = beanFactory.getBean(injectBeanName);
 
             ReflectionUtils.makeAccessible(field);
 
-            field.set(target,injectObject);
+            field.set(target, injectObject);
         }
+    }
+
+    @Override
+    public void setBeanClassLoader(ClassLoader classLoader) {
+        this.classLoader = classLoader;
+    }
+
+    @Override
+    public int getOrder() {
+        //最低优先级,确保ThriftServiceBeanPostProcessor优先执行
+        return Ordered.LOWEST_PRECEDENCE;
     }
 }

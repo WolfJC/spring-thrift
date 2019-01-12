@@ -1,6 +1,8 @@
 package com.wolfjc.thrift.core;
 
+import com.wolfjc.thrift.core.annotation.ThriftService;
 import com.wolfjc.thrift.core.context.ThriftComponentScan;
+import com.wolfjc.thrift.core.rpc.ThriftServer;
 import org.springframework.beans.factory.config.BeanDefinition;
 import org.springframework.beans.factory.support.AbstractBeanDefinition;
 import org.springframework.beans.factory.support.BeanDefinitionBuilder;
@@ -71,7 +73,7 @@ public class ThriftScannerRegistrar implements ImportBeanDefinitionRegistrar{
         builder.addConstructorArgValue(packagesToScan);
         builder.setRole(BeanDefinition.ROLE_INFRASTRUCTURE);
         AbstractBeanDefinition beanDefinition = builder.getBeanDefinition();
-        registry.registerBeanDefinition("thriftServiceBeanPostProcessor",beanDefinition);
+        registry.registerBeanDefinition(ThriftServiceBeanPostProcessor.className,beanDefinition);
     }
 
     /**
@@ -79,10 +81,10 @@ public class ThriftScannerRegistrar implements ImportBeanDefinitionRegistrar{
      * @param beanDefinitionRegistry
      */
     private void registerReferenceBeanPostProcessor(BeanDefinitionRegistry beanDefinitionRegistry){
-        if (!beanDefinitionRegistry.containsBeanDefinition("thriftReferenceBeanPostProcessor")) {
+        if (!beanDefinitionRegistry.containsBeanDefinition(ThriftReferenceBeanPostProcessor.className)) {
             RootBeanDefinition beanDefinition = new RootBeanDefinition(ThriftReferenceBeanPostProcessor.class);
             beanDefinition.setRole(BeanDefinition.ROLE_INFRASTRUCTURE);
-            beanDefinitionRegistry.registerBeanDefinition("thriftReferenceBeanPostProcessor", beanDefinition);
+            beanDefinitionRegistry.registerBeanDefinition(ThriftReferenceBeanPostProcessor.className, beanDefinition);
         }
     }
 }
