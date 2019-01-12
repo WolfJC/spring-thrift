@@ -20,5 +20,5 @@ public @interface ThriftReference {
      *
      * @return
      */
-    String name() default "";
+    String name();
 }

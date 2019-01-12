@@ -25,7 +25,7 @@ public @interface ThriftService {
      *
      * @return
      */
-    String name() default "";
+    String name();
 
 
 }
